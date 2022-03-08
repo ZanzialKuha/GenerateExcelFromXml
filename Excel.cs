@@ -1,0 +1,443 @@
+﻿using System;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Spreadsheet;
+using System.IO;
+using System.Linq;
+
+namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
+{
+    public class Excel
+    {
+        private SpreadsheetDocument _document;
+        private UInt32Value _colCount;
+        private SheetData _SheetData;
+        private MergeCells _MergeCells;
+        private Worksheet _Worksheet;
+        private WorksheetPart _WorksheetPart;
+        private UInt32Value _SheetId;
+        private string _ActiveSheetName;
+        public string ActiveSheetName { get { return _ActiveSheetName; } }
+
+        /// <summary>
+        /// Создание документа для работы. Требуется передать количество столбцов для корректного заполнения шаблона
+        /// </summary>
+        public Excel(SpreadsheetDocument Document, UInt32Value ColCount)
+        {
+            _document = Document;
+            _colCount = ColCount;
+        }
+
+        /// <summary>
+        /// Создание новой книги Excel. Имя листа требуется при создании книги, т.к. Excel хранит информацию о листах в "заголовке".
+        /// Для собственного переопределения процесса создания Excel файла используйте интерфейс IExtendedFilePropertiesPart.
+        /// </summary>
+        public void CreateExcel(string SheetName)
+        {
+            CommonExtendedFilePropertiesPart ExtendedFilePropertiesPart = new CommonExtendedFilePropertiesPart();
+            ExtendedFilePropertiesPart.GenerateExtendedFilePropertiesPart(SheetName, _document);
+            CreateSheet(SheetName);
+        }
+
+        /// <summary>
+        /// Создание новой книги Excel. Имя листа требуется при создании книги, т.к. Excel хранит информацию о листах в "заголовке".
+        /// Для собственного переопределения процесса создания Excel файла используйте интерфейс IExtendedFilePropertiesPart.
+        /// </summary>
+        public void CreateExcel(string SheetName, IExtendedFilePropertiesPart SpreadsheetDocument)
+        {
+            SpreadsheetDocument.GenerateExtendedFilePropertiesPart(SheetName, _document);
+            CreateSheet(SheetName);
+        }
+
+        /// <summary>
+        /// Создание нового листа Excel.
+        /// Для собственного переопределения создания листа используйте интерфейс IWorkbookPart вторым параметром
+        /// </summary>
+        public void CreateSheet(string SheetName)
+        {
+            CommonWorkbookPart WorkbookPart = new CommonWorkbookPart();
+            WorkbookPart.GenerateWorkbookPart(SheetName, _document);
+            SetActiveSheet(SheetName);
+        }
+
+        /// <summary>
+        /// Создание нового листа Excel.
+        /// Для собственного переопределения создания листа используйте интерфейс IWorkbookPart вторым параметром
+        /// </summary>
+        public void CreateSheet(string SheetName, IWorkbookPart WorkbookPart)
+        {
+            WorkbookPart.GenerateWorkbookPart(SheetName, _document);
+            SetActiveSheet(SheetName);
+        }
+
+        /// <summary>
+        /// Создание стилей
+        /// Для собственного переопределения стилей используйте IWorkbookStylesPart в качестве параметра
+        /// </summary>
+        public void CreateStyles()
+        {
+            CommonWorkbookStylesPart WorkbookPart = new CommonWorkbookStylesPart();
+            WorkbookPart.GenerateWorkbookStylesPart(_document);
+        }
+
+        /// <summary>
+        /// Создание стилей
+        /// Для собственного переопределения стилей используйте IWorkbookStylesPart в качестве параметра
+        /// </summary>
+        public void CreateStyles(IWorkbookStylesPart WorkbookStylesPart)
+        {
+            WorkbookStylesPart.GenerateWorkbookStylesPart(_document);
+        }
+
+        /// <summary>
+        /// Добавление данных в ячейку
+        /// </summary>
+        public void Append(string Position, UInt32Value Style = null, string Content = null, string MergeRangeStart = null, string MergeRangeEnd = null)
+        {
+            // найдем строку для позиции
+            if (!String.IsNullOrEmpty(MergeRangeStart) && !String.IsNullOrEmpty(MergeRangeEnd))
+            {
+                MergeRange(MergeRangeStart, MergeRangeEnd, Style);
+            }
+            SetCell(Position, Style, Content);
+
+            _Worksheet.Save();
+        }
+
+        /// <summary>
+        /// Получить адрес ячейки в стиле "А1". Необязательные параметры позволяют получить "фиксированное" значение ячейки для использования в формулах
+        /// </summary>
+        private static string GetCellRCAddress(string Address, bool FixedRow = false, bool FixedCol = false)
+        {
+            int dividend = Convert.ToInt32(Address.Substring(Address.IndexOf('C') + 1));
+            string columnName = String.Empty;
+            int modulo;
+
+            while (dividend > 0)
+            {
+                modulo = (dividend - 1) % 26;
+                columnName = Convert.ToChar(65 + modulo).ToString() + columnName;
+                dividend = (int)((dividend - modulo) / 26);
+            }
+
+            string FixedColString = FixedCol ? "$" : "";
+            string FixedRowString = FixedRow ? "$" : "";
+
+            return string.Format("{0}{1}{2}{3}", FixedColString, columnName, FixedRowString, Address.Substring(Address.IndexOf('R') + 1, Address.IndexOf('C') - Address.IndexOf('R') - 1));
+        }
+
+        /// <summary>
+        /// Найти/создать ячейку для записи данных, установки стилей.
+        /// </summary>
+        private Cell SetCell(string reference, UInt32Value styleIndex = null, string value = null)
+        {
+            // найдем строку для позиции
+            Row CurrentRow = GetRow(reference);
+            Column CurrentColumn = GetColumn(reference);
+
+            if (value == null)
+            {
+                value = "";
+            }
+
+            Cell cell = _Worksheet.Descendants<Cell>().Where(c => c.CellReference == GetCellRCAddress(reference)).FirstOrDefault();
+            if (cell != null)
+            {
+                cell = _Worksheet.Descendants<Cell>().Where(c => c.CellReference == GetCellRCAddress(reference)).FirstOrDefault();
+
+                if (styleIndex != null)
+                {
+                    cell.StyleIndex = styleIndex;
+                }
+
+                if (value.Length > 0)
+                {
+                    // добавим формулу, если первым символом передали "=" как в Excel
+                    if (value[0] == '=')
+                    {
+
+                        cell.CellFormula = new CellFormula(value[1..]);
+                    }
+                    else
+                    {
+                        cell.CellValue = new CellValue(value);
+                    }
+                }
+                else
+                {
+                    cell.CellValue = new CellValue(value);
+                }
+
+                cell.DataType = new EnumValue<CellValues>(CellValues.String);
+            }
+            else
+            {
+                cell = new Cell() { CellReference = GetCellRCAddress(reference), DataType = CellValues.String };
+
+                if (styleIndex != null)
+                {
+                    cell.StyleIndex = styleIndex;
+                }
+
+                CellValue cellValue = new CellValue();
+                cellValue.Text = value;
+
+                cell.Append(cellValue);
+
+                CurrentRow.Append(cell);
+            }
+
+            return cell;
+        }
+
+        /// <summary>
+        /// Найти/создать строку. При первом обращении к строке выполняется заполнение всех ячеек от 1 до _colCount для корректрой работы шаблона.
+        /// </summary>
+        private Row GetRow(string Position)
+        {
+            UInt32Value Row_Id = Convert.ToUInt32(Position.Substring(Position.IndexOf('R') + 1, Position.IndexOf('C') - Position.IndexOf('R') - 1));
+            Row CurrentRow;
+
+            // попробуем найти уже созданную строку
+            if (_SheetData.Elements<Row>().Where(r => r.RowIndex == Row_Id).Count() != 0)
+            {
+                CurrentRow = _SheetData.Elements<Row>().Where(r => r.RowIndex == Row_Id).First();
+            }
+            else
+            {
+                // создаем новую строку "по умолчанию"
+                CurrentRow = new Row() { RowIndex = Row_Id, Spans = new ListValue<StringValue>() { InnerText = "1:100" }, CustomHeight = true, Height = 14.25D, DyDescent = 0.25D };
+                _SheetData.Append(CurrentRow);
+
+                for (UInt32Value CurrCol = 1; CurrCol <= _colCount; CurrCol++)
+                {
+                    Cell cell = new Cell() { CellReference = GetCellRCAddress(String.Format("R{0}C{1}", Row_Id, CurrCol)), DataType = CellValues.String };
+                    CellValue cellValue = new CellValue();
+                    cellValue.Text = "";
+                    cell.Append(cellValue);
+                    CurrentRow.Append(cell);
+                }
+
+            }
+
+            return CurrentRow;
+        }
+
+        /// <summary>
+        /// Найти/создать столбец. При первом обращении к столбцу выполняется создание данной колонки.
+        /// </summary>
+        private Column GetColumn(string Position)
+        {
+            UInt32Value Col_Id = Convert.ToUInt32(Position.Substring(Position.IndexOf('C') + 1));
+            Column CurrentColumn;
+            if (_SheetData.Elements<Column>().Where(r => r.Min == Col_Id).Count() != 0)
+            {
+                CurrentColumn = _SheetData.Elements<Column>().Where(r => r.Min == Col_Id).First();
+            }
+            else
+            {
+                Columns Columns = _Worksheet.Elements<Columns>().First();
+                CurrentColumn = new Column() { Min = Col_Id, Max = Col_Id, Width = 9.14D, CustomWidth = true };
+                Columns.Append(CurrentColumn);
+            }
+
+            return CurrentColumn;
+        }
+
+        /// <summary>
+        /// Мерж диапазона ячеек. Для корректной работы границ обязательно надо инициализировать все ячейки внутри диапазона.
+        /// </summary>
+        private void MergeRange(string Start, string End, UInt32Value Style = null)
+        {
+            UInt32Value StartRow = Convert.ToUInt32(Start.Substring(Start.IndexOf('R') + 1, Start.IndexOf('C') - Start.IndexOf('R') - 1));
+            UInt32Value StartCol = Convert.ToUInt32(Start.Substring(Start.IndexOf('C') + 1));
+
+            UInt32Value EndRow = Convert.ToUInt32(End.Substring(End.IndexOf('R') + 1, End.IndexOf('C') - End.IndexOf('R') - 1));
+            UInt32Value EndCol = Convert.ToUInt32(End.Substring(End.IndexOf('C') + 1));
+
+            for (UInt32Value CurrCol = StartCol; CurrCol <= EndCol; CurrCol++)
+            {
+                for (UInt32Value CurrRow = StartRow; CurrRow <= EndRow; CurrRow++)
+                {
+                    SetCell(String.Format("R{0}C{1}", CurrRow, CurrCol), Style);
+                }
+            }
+
+            // нельзя инициализировать MergeCells без элементов - ошибка структуры xlsx
+            _MergeCells = _Worksheet.Elements<MergeCells>().FirstOrDefault();
+            if (_MergeCells == null)
+            {
+                MergeCells MergeCells = new MergeCells();
+                _Worksheet.Append(MergeCells);
+
+                _MergeCells = _Worksheet.Elements<MergeCells>().FirstOrDefault();
+            }
+
+            _MergeCells.Append(new MergeCell() { Reference = String.Format("{0}:{1}", GetCellRCAddress(Start), GetCellRCAddress(End)) });
+        }
+
+        /// <summary>
+        /// Установка ширины столбцов
+        /// </summary>
+        public void SetColumnWidth(UInt32Value StartCol, double[] Width)
+        {
+            for (UInt32Value CurrCol = StartCol; CurrCol <= Width.Length; CurrCol++)
+            {
+                Column CurrentColumn = GetColumn(String.Format("R{0}C{1}", 1, CurrCol));
+                CurrentColumn.Width = (DoubleValue)Width[CurrCol - StartCol];
+            }
+        }
+
+        /// <summary>
+        /// Установка высоты строк
+        /// </summary>
+        public void SetRowHeight(UInt32Value StartRow, double[] Height)
+        {
+            for (UInt32Value CurrRow = StartRow; CurrRow <= Height.Length; CurrRow++)
+            {
+                Row CurrentRow = GetRow(String.Format("R{0}C{1}", CurrRow, 1));
+                CurrentRow.Height = (DoubleValue)Height[CurrRow - StartRow];
+            }
+        }
+
+        /// <summary>
+        /// Получение данных ячеек
+        /// </summary>
+        public string GetCellData(string reference)
+        {
+            Cell cell = _Worksheet.Descendants<Cell>().Where(c => c.CellReference == GetCellRCAddress(reference)).FirstOrDefault();
+            if (cell != null)
+            {
+                cell = _Worksheet.Descendants<Cell>().Where(c => c.CellReference == GetCellRCAddress(reference)).FirstOrDefault();
+                return cell.CellValue.Text;
+            }
+
+            return String.Empty;
+        }
+
+        public void SetActiveSheet(string SheetName)
+        {
+            _ActiveSheetName = SheetName;
+            WorkbookPart WorkbookPart = (WorkbookPart)_document.WorkbookPart;
+            string relId = WorkbookPart.Workbook.Descendants<Sheet>().First(s => SheetName.Equals(s.Name)).Id;
+            _SheetId = WorkbookPart.Workbook.Descendants<Sheet>().First(s => SheetName.Equals(s.Name)).SheetId;
+
+            // данные должны быть уже заполнены при создании листа, обратимся к ним
+
+            _WorksheetPart = (WorksheetPart)_document.WorkbookPart.GetPartById(relId);
+            _Worksheet = _WorksheetPart.Worksheet;
+            _SheetData = _Worksheet.Elements<SheetData>().First();
+
+            WorkbookPart.Workbook.CalculationProperties.ForceFullCalculation = true;
+            WorkbookPart.Workbook.CalculationProperties.FullCalculationOnLoad = true;
+            /*
+            WorkbookView WorkbookView = _document.WorkbookPart.Workbook.BookViews.ChildElements.First<WorkbookView>();
+            WorkbookView.ActiveTab = _SheetId;
+*/
+            /*
+            var sheet = WorkbookPart.Workbook.Descendants<Sheet>().FirstOrDefault(s => s.Name == SheetName);
+            sheet.State = SheetStateValues.Hidden;
+            */
+
+        }
+
+        /// <summary>
+        /// Создание выпадающего списка значений по ссылке с другого диапазона ячеек и/или листов
+        /// </summary>
+        public void AddDropdownListLinkSheet(string RangeStart, string RangeEnd, string FromSheet, string TargetStart, string TargetEnd = "")
+        {
+            if (TargetEnd == "")
+            {
+                TargetEnd = TargetStart;
+            }
+
+            DataValidations DataValidations = _Worksheet.GetFirstChild<DataValidations>();
+            if (DataValidations != null)
+            {
+                DataValidations.Count = DataValidations.Count + 1;
+            }
+            else
+            {
+                DataValidations = new DataValidations();
+                DataValidations.Count = 1;
+                _Worksheet.Append(DataValidations);
+            }
+
+            DataValidation DataValidation = new DataValidation
+            {
+                Type = DataValidationValues.List,
+                AllowBlank = true,
+                SequenceOfReferences = new ListValue<StringValue> { InnerText = string.Format("{0}:{1}", GetCellRCAddress(TargetStart), GetCellRCAddress(TargetEnd)) }
+            };
+
+            DataValidation.Append(
+                new Formula1(string.Format("'{0}'!{1}:{2}", FromSheet, GetCellRCAddress(RangeStart, true, true), GetCellRCAddress(RangeEnd, true, true)))
+                );
+            DataValidations.Append(DataValidation);
+        }
+
+        /// <summary>
+        /// Создание выпадающего списка значений в явном виде (ожидаемый разделитель значенией - символ ",")
+        /// </summary>
+        public void AddDropdownList(string DropdownString, string TargetStart, string TargetEnd = "")
+        {
+            if (TargetEnd == "")
+            {
+                TargetEnd = TargetStart;
+            }
+
+            DataValidations DataValidations = _Worksheet.GetFirstChild<DataValidations>();
+            if (DataValidations != null)
+            {
+                DataValidations.Count = DataValidations.Count + 1;
+            }
+            else
+            {
+                DataValidations = new DataValidations();
+                DataValidations.Count = 1;
+                _Worksheet.Append(DataValidations);
+            }
+
+            DataValidation DataValidation = new DataValidation
+            {
+                Type = DataValidationValues.List,
+                AllowBlank = true,
+                SequenceOfReferences = new ListValue<StringValue> { InnerText = string.Format("{0}:{1}", GetCellRCAddress(TargetStart), GetCellRCAddress(TargetEnd)) }
+            };
+
+            DataValidation.Append(
+                new Formula1 { Text = string.Format("\"{0}\"", DropdownString) }
+                );
+            DataValidations.Append(DataValidation);
+        }
+
+        /// <summary>
+        /// WIP. Создание фильтра для поиска по столбцам
+        /// </summary>
+        private void AddFilter(string TargetStart, string TargetEnd = "")
+        {
+            Workbook Workbook = _document.WorkbookPart.Workbook;
+
+            DefinedNames DefinedNames = Workbook.GetFirstChild<DefinedNames>();
+            if (DefinedNames == null)
+            {
+                DefinedNames = new DefinedNames();
+                Workbook.Append(DefinedNames);
+            }
+
+            if (TargetEnd == "")
+            {
+                TargetEnd = TargetStart;
+            }
+
+            DefinedName DefinedName = new DefinedName()
+            {
+                Name = "_xlnm._FilterDatabase",
+                Text = string.Format("'{0}'!{1}:{2}", _ActiveSheetName, GetCellRCAddress(TargetStart, true, true), GetCellRCAddress(TargetEnd, true, true)),
+                LocalSheetId = _SheetId
+            };
+
+            DefinedNames.Append(DefinedName);
+        }
+    }
+}
