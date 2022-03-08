@@ -105,45 +105,24 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
         }
 
         /// <summary>
-        /// Получить адрес ячейки в стиле "А1". Необязательные параметры позволяют получить "фиксированное" значение ячейки для использования в формулах
-        /// </summary>
-        private static string GetCellRCAddress(string Address, bool FixedRow = false, bool FixedCol = false)
-        {
-            int dividend = Convert.ToInt32(Address.Substring(Address.IndexOf('C') + 1));
-            string columnName = String.Empty;
-            int modulo;
-
-            while (dividend > 0)
-            {
-                modulo = (dividend - 1) % 26;
-                columnName = Convert.ToChar(65 + modulo).ToString() + columnName;
-                dividend = (int)((dividend - modulo) / 26);
-            }
-
-            string FixedColString = FixedCol ? "$" : "";
-            string FixedRowString = FixedRow ? "$" : "";
-
-            return string.Format("{0}{1}{2}{3}", FixedColString, columnName, FixedRowString, Address.Substring(Address.IndexOf('R') + 1, Address.IndexOf('C') - Address.IndexOf('R') - 1));
-        }
-
-        /// <summary>
         /// Найти/создать ячейку для записи данных, установки стилей.
         /// </summary>
         private Cell SetCell(string reference, UInt32Value styleIndex = null, string value = null)
         {
             // найдем строку для позиции
-            Row CurrentRow = GetRow(reference);
-            Column CurrentColumn = GetColumn(reference);
+            ExcelAddress Address = new ExcelAddress(reference);
+            Row CurrentRow = GetRow(Address);
+            Column CurrentColumn = GetColumn(Address);
 
             if (value == null)
             {
                 value = "";
             }
 
-            Cell cell = _Worksheet.Descendants<Cell>().Where(c => c.CellReference == GetCellRCAddress(reference)).FirstOrDefault();
+            Cell cell = _Worksheet.Descendants<Cell>().Where(c => c.CellReference == Address.Address).FirstOrDefault();
             if (cell != null)
             {
-                cell = _Worksheet.Descendants<Cell>().Where(c => c.CellReference == GetCellRCAddress(reference)).FirstOrDefault();
+                cell = _Worksheet.Descendants<Cell>().Where(c => c.CellReference == Address.Address).FirstOrDefault();
 
                 if (styleIndex != null)
                 {
@@ -172,7 +151,7 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
             }
             else
             {
-                cell = new Cell() { CellReference = GetCellRCAddress(reference), DataType = CellValues.String };
+                cell = new Cell() { CellReference = Address.Address, DataType = CellValues.String };
 
                 if (styleIndex != null)
                 {
@@ -193,9 +172,9 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
         /// <summary>
         /// Найти/создать строку. При первом обращении к строке выполняется заполнение всех ячеек от 1 до _colCount для корректрой работы шаблона.
         /// </summary>
-        private Row GetRow(string Position)
+        private Row GetRow(ExcelAddress Position)
         {
-            UInt32Value Row_Id = Convert.ToUInt32(Position.Substring(Position.IndexOf('R') + 1, Position.IndexOf('C') - Position.IndexOf('R') - 1));
+            UInt32Value Row_Id = Convert.ToUInt32(Position.Row);
             Row CurrentRow;
 
             // попробуем найти уже созданную строку
@@ -211,7 +190,7 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
 
                 for (UInt32Value CurrCol = 1; CurrCol <= _colCount; CurrCol++)
                 {
-                    Cell cell = new Cell() { CellReference = GetCellRCAddress(String.Format("R{0}C{1}", Row_Id, CurrCol)), DataType = CellValues.String };
+                    Cell cell = new Cell() { CellReference = new ExcelAddress(String.Format("R{0}C{1}", Row_Id, CurrCol)).ToString(), DataType = CellValues.String };
                     CellValue cellValue = new CellValue();
                     cellValue.Text = "";
                     cell.Append(cellValue);
@@ -226,9 +205,9 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
         /// <summary>
         /// Найти/создать столбец. При первом обращении к столбцу выполняется создание данной колонки.
         /// </summary>
-        private Column GetColumn(string Position)
+        private Column GetColumn(ExcelAddress Position)
         {
-            UInt32Value Col_Id = Convert.ToUInt32(Position.Substring(Position.IndexOf('C') + 1));
+            UInt32Value Col_Id = Convert.ToUInt32(Position.Col);
             Column CurrentColumn;
             if (_SheetData.Elements<Column>().Where(r => r.Min == Col_Id).Count() != 0)
             {
@@ -249,11 +228,14 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
         /// </summary>
         private void MergeRange(string Start, string End, UInt32Value Style = null)
         {
-            UInt32Value StartRow = Convert.ToUInt32(Start.Substring(Start.IndexOf('R') + 1, Start.IndexOf('C') - Start.IndexOf('R') - 1));
-            UInt32Value StartCol = Convert.ToUInt32(Start.Substring(Start.IndexOf('C') + 1));
+            ExcelAddress StartAddress = new ExcelAddress(Start);
+            ExcelAddress EndAddress = new ExcelAddress(End);
 
-            UInt32Value EndRow = Convert.ToUInt32(End.Substring(End.IndexOf('R') + 1, End.IndexOf('C') - End.IndexOf('R') - 1));
-            UInt32Value EndCol = Convert.ToUInt32(End.Substring(End.IndexOf('C') + 1));
+            UInt32Value StartRow = Convert.ToUInt32(StartAddress.Row);
+            UInt32Value StartCol = Convert.ToUInt32(StartAddress.Col);
+
+            UInt32Value EndRow = Convert.ToUInt32(EndAddress.Row);
+            UInt32Value EndCol = Convert.ToUInt32(EndAddress.Col);
 
             for (UInt32Value CurrCol = StartCol; CurrCol <= EndCol; CurrCol++)
             {
@@ -273,7 +255,7 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
                 _MergeCells = _Worksheet.Elements<MergeCells>().FirstOrDefault();
             }
 
-            _MergeCells.Append(new MergeCell() { Reference = String.Format("{0}:{1}", GetCellRCAddress(Start), GetCellRCAddress(End)) });
+            _MergeCells.Append(new MergeCell() { Reference = String.Format("{0}:{1}", StartAddress.Address, EndAddress.Address) });
         }
 
         /// <summary>
@@ -283,7 +265,7 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
         {
             for (UInt32Value CurrCol = StartCol; CurrCol <= Width.Length; CurrCol++)
             {
-                Column CurrentColumn = GetColumn(String.Format("R{0}C{1}", 1, CurrCol));
+                Column CurrentColumn = GetColumn(new ExcelAddress(String.Format("R{0}C{1}", 1, CurrCol)));
                 CurrentColumn.Width = (DoubleValue)Width[CurrCol - StartCol];
             }
         }
@@ -295,7 +277,7 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
         {
             for (UInt32Value CurrRow = StartRow; CurrRow <= Height.Length; CurrRow++)
             {
-                Row CurrentRow = GetRow(String.Format("R{0}C{1}", CurrRow, 1));
+                Row CurrentRow = GetRow(new ExcelAddress(String.Format("R{0}C{1}", CurrRow, 1)));
                 CurrentRow.Height = (DoubleValue)Height[CurrRow - StartRow];
             }
         }
@@ -305,10 +287,12 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
         /// </summary>
         public string GetCellData(string reference)
         {
-            Cell cell = _Worksheet.Descendants<Cell>().Where(c => c.CellReference == GetCellRCAddress(reference)).FirstOrDefault();
+            ExcelAddress Address = new ExcelAddress(reference);
+
+            Cell cell = _Worksheet.Descendants<Cell>().Where(c => c.CellReference == Address.Address).FirstOrDefault();
             if (cell != null)
             {
-                cell = _Worksheet.Descendants<Cell>().Where(c => c.CellReference == GetCellRCAddress(reference)).FirstOrDefault();
+                cell = _Worksheet.Descendants<Cell>().Where(c => c.CellReference == Address.Address).FirstOrDefault();
                 return cell.CellValue.Text;
             }
 
@@ -367,11 +351,11 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
             {
                 Type = DataValidationValues.List,
                 AllowBlank = true,
-                SequenceOfReferences = new ListValue<StringValue> { InnerText = string.Format("{0}:{1}", GetCellRCAddress(TargetStart), GetCellRCAddress(TargetEnd)) }
+                SequenceOfReferences = new ListValue<StringValue> { InnerText = string.Format("{0}:{1}", new ExcelAddress(TargetStart), new ExcelAddress(TargetEnd)) }
             };
 
             DataValidation.Append(
-                new Formula1(string.Format("'{0}'!{1}:{2}", FromSheet, GetCellRCAddress(RangeStart, true, true), GetCellRCAddress(RangeEnd, true, true)))
+                new Formula1(string.Format("'{0}'!{1}:{2}", FromSheet, new ExcelAddress(RangeStart, true, true), new ExcelAddress(RangeEnd, true, true)))
                 );
             DataValidations.Append(DataValidation);
         }
@@ -402,7 +386,7 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
             {
                 Type = DataValidationValues.List,
                 AllowBlank = true,
-                SequenceOfReferences = new ListValue<StringValue> { InnerText = string.Format("{0}:{1}", GetCellRCAddress(TargetStart), GetCellRCAddress(TargetEnd)) }
+                SequenceOfReferences = new ListValue<StringValue> { InnerText = string.Format("{0}:{1}", new ExcelAddress(TargetStart), new ExcelAddress(TargetEnd)) }
             };
 
             DataValidation.Append(
@@ -433,7 +417,7 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
             DefinedName DefinedName = new DefinedName()
             {
                 Name = "_xlnm._FilterDatabase",
-                Text = string.Format("'{0}'!{1}:{2}", _ActiveSheetName, GetCellRCAddress(TargetStart, true, true), GetCellRCAddress(TargetEnd, true, true)),
+                Text = string.Format("'{0}'!{1}:{2}", _ActiveSheetName, new ExcelAddress(TargetStart, true, true), new ExcelAddress(TargetEnd, true, true)),
                 LocalSheetId = _SheetId
             };
 
