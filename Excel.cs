@@ -34,9 +34,9 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
         /// </summary>
         public void CreateExcel(string SheetName)
         {
-            CommonExtendedFilePropertiesPart ExtendedFilePropertiesPart = new CommonExtendedFilePropertiesPart();
-            ExtendedFilePropertiesPart.GenerateExtendedFilePropertiesPart(SheetName, _document);
+            CreateExcel(SheetName, new CommonExtendedFilePropertiesPart());
             CreateSheet(SheetName);
+            CreateStyles();
         }
 
         /// <summary>
@@ -46,7 +46,6 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
         public void CreateExcel(string SheetName, IExtendedFilePropertiesPart SpreadsheetDocument)
         {
             SpreadsheetDocument.GenerateExtendedFilePropertiesPart(SheetName, _document);
-            CreateSheet(SheetName);
         }
 
         /// <summary>
@@ -55,9 +54,7 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
         /// </summary>
         public void CreateSheet(string SheetName)
         {
-            CommonWorkbookPart WorkbookPart = new CommonWorkbookPart();
-            WorkbookPart.GenerateWorkbookPart(SheetName, _document);
-            SetActiveSheet(SheetName);
+            CreateSheet(SheetName, new CommonWorkbookPart());
         }
 
         /// <summary>
@@ -76,8 +73,7 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
         /// </summary>
         public void CreateStyles()
         {
-            CommonWorkbookStylesPart WorkbookPart = new CommonWorkbookStylesPart();
-            WorkbookPart.GenerateWorkbookStylesPart(_document);
+            CreateStyles(new CommonWorkbookStylesPart());
         }
 
         /// <summary>
@@ -87,6 +83,26 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
         public void CreateStyles(IWorkbookStylesPart WorkbookStylesPart)
         {
             WorkbookStylesPart.GenerateWorkbookStylesPart(_document);
+
+            CellFont CellFont0 = new CellFont() { FontSize = 11D, ColorTheme = 1U, FontName = "Calibri" };
+            CellFont CellFont1 = new CellFont() { FontSize = 11D, ColorTheme = 1U, FontName = "Calibri", Bold = true };
+            CellFont CellFont2 = new CellFont() { FontSize = 10D, ColorTheme = 1U, FontName = "Calibri", Bold = true };
+            CellFont CellFont3 = new CellFont() { FontSize = 10D, ColorTheme = 1U, FontName = "Calibri", Bold = true };
+
+            CellFill CellFill0 = new CellFill() { PatternType = PatternValues.None };
+
+            CellBorder CellBorder0 = new CellBorder();
+            CellBorder CellBorder1 = new CellBorder() { LeftColor = 64, LeftStyle = BorderStyleValues.Thin, RightColor = 64, RightStyle = BorderStyleValues.Thin, TopColor = 64, TopStyle = BorderStyleValues.Thin, BottomColor = 64, BottomStyle = BorderStyleValues.Thin };
+
+            ExcelStyle ExcelStyle1 = new ExcelStyle() { CellFont = CellFont0, CellFill = CellFill0, CellBorder = CellBorder0 };
+            ExcelStyle ExcelStyle2 = new ExcelStyle() { CellFont = CellFont1, CellFill = CellFill0, CellBorder = CellBorder0, CellAlignment = new CellAlignment() { Horizontal = HorizontalAlignmentValues.Center } };
+            ExcelStyle ExcelStyle3 = new ExcelStyle() { CellFont = CellFont1, CellFill = CellFill0, CellBorder = CellBorder1, CellAlignment = new CellAlignment() { Horizontal = HorizontalAlignmentValues.Left, Vertical = VerticalAlignmentValues.Top, WrapText = true } };
+            ExcelStyle ExcelStyle4 = new ExcelStyle() { CellFont = CellFont0, CellFill = CellFill0, CellBorder = CellBorder1, CellAlignment = new CellAlignment() { Horizontal = HorizontalAlignmentValues.Left, Vertical = VerticalAlignmentValues.Top, WrapText = true } };
+
+            CreateOrFindCellStyle(ExcelStyle1);
+            CreateOrFindCellStyle(ExcelStyle2);
+            CreateOrFindCellStyle(ExcelStyle3);
+            CreateOrFindCellStyle(ExcelStyle4);
         }
 
         /// <summary>
@@ -422,6 +438,58 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
             };
 
             DefinedNames.Append(DefinedName);
+        }
+
+        public UInt32Value CreateOrFindCellStyle(ExcelStyle ExcelStyle)
+        {
+            WorkbookStylesPart stylesPart = _document.WorkbookPart.WorkbookStylesPart;
+            Stylesheet StyleSheet = stylesPart.Stylesheet;
+
+            // шрифты
+            Fonts Fonts = StyleSheet.Elements<Fonts>().First();
+            if (ExcelStyle.CellFont.Id is null)
+            {
+                ExcelStyle.CellFont.Append();
+                Fonts.Append(ExcelStyle.CellFont.Font);
+                ExcelStyle.CellFont.Id = Fonts.Count++;
+            }
+
+            // заливка
+            Fills Fills = StyleSheet.Elements<Fills>().First();
+            if (ExcelStyle.CellFill.Id is null)
+            {
+                ExcelStyle.CellFill.Append();
+                Fills.Append(ExcelStyle.CellFill.Fill);
+                ExcelStyle.CellFill.Id = Fills.Count++;
+            }
+
+            // границы
+            Borders Borders = StyleSheet.Elements<Borders>().First();
+            if (ExcelStyle.CellBorder.Id is null)
+            {
+                ExcelStyle.CellBorder.Append();
+                Borders.Append(ExcelStyle.CellBorder.Border);
+                ExcelStyle.CellBorder.Id = Borders.Count++;
+            }
+
+            CellFormats CellFormats = StyleSheet.Elements<CellFormats>().First();
+            if (ExcelStyle.Id is null)
+            {
+                CellFormat CellFormat = new CellFormat() { NumberFormatId = (UInt32Value)0U, FontId = ExcelStyle.CellFont.Id, FillId = ExcelStyle.CellFill.Id, BorderId = ExcelStyle.CellBorder.Id, FormatId = (UInt32Value)0U, ApplyNumberFormat = true, ApplyFont = true, ApplyFill = true, ApplyBorder = true, ApplyAlignment = true };
+                ExcelStyle.CellAlignment.Append();
+                CellFormat.Append(ExcelStyle.CellAlignment.Alignment);
+                CellFormats.Append(CellFormat);
+
+                ExcelStyle.Id = CellFormats.Count++;
+            }
+
+            /*
+            var newNumId = targetStyleSheet.NumberingFormats.Any()
+                                 ? targetStyleSheet.NumberingFormats.Elements<NumberingFormat>()
+                                     .Max(a => a.NumberFormatId).Value + 1
+                                 : 1;
+            */
+            return ExcelStyle.Id;
         }
     }
 }

@@ -69,7 +69,7 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
                 dividend = (int)((dividend - modulo) / 26);
             }
 
-            return string.Format("{0}{1}", Address.Substring(Address.IndexOf('R') + 1, Address.IndexOf('C') - Address.IndexOf('R') - 1));
+            return string.Format("{0}{1}", _columnName, Address.Substring(Address.IndexOf('R') + 1, Address.IndexOf('C') - Address.IndexOf('R') - 1));
         }
 
         private string GetCellRCAddress(string Address)
