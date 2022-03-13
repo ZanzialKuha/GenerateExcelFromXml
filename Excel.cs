@@ -476,8 +476,12 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
             if (ExcelStyle.Id is null)
             {
                 CellFormat CellFormat = new CellFormat() { NumberFormatId = (UInt32Value)0U, FontId = ExcelStyle.CellFont.Id, FillId = ExcelStyle.CellFill.Id, BorderId = ExcelStyle.CellBorder.Id, FormatId = (UInt32Value)0U, ApplyNumberFormat = true, ApplyFont = true, ApplyFill = true, ApplyBorder = true, ApplyAlignment = true };
+
+                // т.к. в случае с выравниванием мы "физически" привязываем его к древу (а не его Id), то нужно обязательно создать копию объекта
                 ExcelStyle.CellAlignment.Append();
-                CellFormat.Append(ExcelStyle.CellAlignment.Alignment);
+                Alignment Alignment = new Alignment() { Vertical = ExcelStyle.CellAlignment.Vertical, Horizontal = ExcelStyle.CellAlignment.Horizontal, WrapText = ExcelStyle.CellAlignment.WrapText };
+
+                CellFormat.Append(Alignment);
                 CellFormats.Append(CellFormat);
 
                 ExcelStyle.Id = CellFormats.Count++;
