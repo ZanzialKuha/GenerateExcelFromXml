@@ -135,10 +135,10 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
                 value = "";
             }
 
-            Cell cell = _Worksheet.Descendants<Cell>().Where(c => c.CellReference == Address.Address).FirstOrDefault();
-            if (cell != null)
+            Cell cell;
+            if (_Worksheet.Descendants<Cell>().Where(c => c.CellReference == Address.Address).Count() != 0)
             {
-                cell = _Worksheet.Descendants<Cell>().Where(c => c.CellReference == Address.Address).FirstOrDefault();
+                cell = _Worksheet.Descendants<Cell>().Where(c => c.CellReference == Address.Address).First();
 
                 if (styleIndex != null)
                 {
@@ -225,9 +225,10 @@ namespace Norbit.Srm.RusAgro.GenerateExcelFromXml
         {
             UInt32Value Col_Id = Convert.ToUInt32(Position.Col);
             Column CurrentColumn;
-            if (_SheetData.Elements<Column>().Where(r => r.Min == Col_Id).Count() != 0)
+
+            if (_Worksheet.Descendants<Column>().Where(r => r.Min == Col_Id).Count() != 0)
             {
-                CurrentColumn = _SheetData.Elements<Column>().Where(r => r.Min == Col_Id).First();
+                CurrentColumn = _Worksheet.Descendants<Column>().Where(r => r.Min == Col_Id).First();
             }
             else
             {
